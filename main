@@ -1,0 +1,246 @@
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('Risk Analysis')
+    .addItem('Calculate Sum of Range of Cost', 'showCostSidebar')
+    .addItem('Calculate Self-Build Risk', 'showRiskSidebar')
+    .addItem('Input Data', 'showFinancialSidebar')
+    .addItem('Calculate Risks', 'calculateRisks')
+    .addToUi();
+}
+
+function showCostSidebar() {
+  var html = HtmlService.createHtmlOutputFromFile('CostSidebar')
+    .setTitle('Cost Data Entry')
+    .setWidth(300);
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+function showRiskSidebar() {
+  try {
+    var html = HtmlService.createHtmlOutputFromFile('RiskSidebar')
+      .setTitle('Self-Build Risk Analysis')
+      .setWidth(300);
+    SpreadsheetApp.getUi().showSidebar(html);
+  } catch (e) {
+    Logger.log('Error in showRiskSidebar: ' + e.message);
+    SpreadsheetApp.getUi().alert('Error showing Risk Sidebar: ' + e.message);
+  }
+}
+
+function showFinancialSidebar() {
+  var html = HtmlService.createHtmlOutputFromFile('FinancialSidebar')
+    .setTitle('Financial Data Input')
+    .setWidth(300);
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+function setupSheet() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Data Input');
+  if (!sheet) {
+    sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('Data Input');
+  } else {
+    sheet.clear();
+  }
+  
+  // Risk Factors and Weights
+  sheet.getRange('A1').setValue('Risk Factor');
+  sheet.getRange('B1').setValue('Weight');
+  sheet.getRange('C1').setValue('Build Scores');
+  var riskFactors = ['Cost', 'Time', 'Quality', 'Supply Chain', 'Scalability', 'Expertise', 'Market Risk', 'Technology Risk'];
+  var weights = [0.2, 0.15, 0.15, 0.1, 0.1, 0.1, 0.1, 0.1];
+  
+  for (var i = 0; i < riskFactors.length; i++) {
+    sheet.getRange(i + 2, 1).setValue(riskFactors[i]);
+    sheet.getRange(i + 2, 2).setValue(weights[i]);
+  }
+  
+  // Cost Attributes
+  sheet.getRange('E1').setValue('Attributes');
+  sheet.getRange('F1').setValue('Cost / month ($)');
+  var attributes = ['Land and Buildings', 'Machinery and Equipment', 'Technology and Software', 'Raw Materials', 'Labor Costs', 'Utilities', 'Maintenance and Repairs', 'Quality Control', 'Overhead Costs', 'Inventory Costs', 'Depreciation', 'Logistics and Distribution', 'Licenses and Permits', 'Environmental Compliance', 'Health and Safety', 'Interest and Loan Payments', 'Property and Casualty Insurance', 'Liability Insurance', 'Product Development', 'Process Improvement', 'Supplier Relationships', 'Supply Chain Management'];
+  var costs = [10000, 6000, 500, 150000, 0, 1000, 1250, 0, 2000, 500, 0, 69778, 260, 678, 556.2, 7880, 7000, 1633, 11230.02, 12352, 1322, 4562];
+  
+  for (var j = 0; j < attributes.length; j++) {
+    sheet.getRange(j + 2, 5).setValue(attributes[j]);
+    sheet.getRange(j + 2, 6).setValue(costs[j]);
+  }
+  
+  // Output Cells
+  sheet.getRange('I1').setValue('Total Cost');
+  sheet.getRange('I2').setValue('Build Average Rating');
+  sheet.getRange('I3').setValue('Recommendation');
+  sheet.getRange('G1').setValue('Beta Value');
+
+  // Formula to calculate the total cost dynamically
+  calculateSumAndDisplay('F2:F23', 'I1');
+}
+
+function onEdit(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Data Input');
+  if (e.range.getSheet().getName() === 'Data Input' && e.range.getColumn() === 6) {
+    calculateSumAndDisplay('F2:F23', 'I1');
+  }
+}
+
+function processRiskData(formData) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Data Input');
+  var riskFactors = ['cost', 'time', 'quality', 'supplyChain', 'scalability', 'expertise', 'marketRisk', 'technologyRisk'];
+  var buildScores = [];
+
+  for (var i = 0; i < riskFactors.length; i++) {
+    var score = parseInt(formData[riskFactors[i]]);
+    buildScores.push(score);
+  }
+
+  for (var j = 0; j < buildScores.length; j++) {
+    sheet.getRange(j + 2, 3).setValue(buildScores[j]);
+  }
+
+  calculateRiskScores();
+}
+
+function calculateRiskScores() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Data Input');
+  var weights = [0.2, 0.15, 0.15, 0.1, 0.1, 0.1, 0.1, 0.1];
+  var buildTotal = 0;
+
+  for (var i = 0; i < weights.length; i++) {
+    var buildScore = sheet.getRange(i + 2, 3).getValue();
+    buildTotal += buildScore * weights[i];
+  }
+
+  sheet.getRange('I2').setValue(buildTotal);
+
+  var totalCost = sheet.getRange('I1').getValue(); // Total cost is dynamically calculated in cell I1
+
+  var recommendation;
+  if (buildTotal < 2) {
+    recommendation = 'Strongly Recommended to Build Your Own Business';
+  } else if (buildTotal < 3) {
+    recommendation = 'Recommended to Build Your Own Business';
+  } else if (buildTotal < 4) {
+    recommendation = 'Neutral';
+  } else if (buildTotal < 5) {
+    recommendation = 'Not Recommended to Build Your Own Business';
+  } else {
+    recommendation = 'Strongly Not Recommended to Build Your Own Business';
+  }
+
+  sheet.getRange('I3').setValue(recommendation);
+}
+
+function calculateSumAndDisplay(selectedRange, displayRange) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var range = sheet.getRange(selectedRange);
+  var values = range.getValues();
+  
+  var sum = values.reduce(function(acc, row) {
+    return acc + row.reduce(function(rowAcc, cell) {
+      return rowAcc + (isNaN(cell) ? 0 : cell);
+    }, 0);
+  }, 0);
+
+  sheet.getRange(displayRange).setValue(sum);
+  return sum;
+}
+
+function getActiveRange() {
+  var range = SpreadsheetApp.getActiveSpreadsheet().getActiveRange().getA1Notation();
+  return range;
+}
+
+function fetchData(companyTicker, startDate, endDate) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Data Input');
+
+  // Fetch company data
+  var companyDataFormula = '=GOOGLEFINANCE("' + companyTicker + '", "close", DATE(' + startDate.split('-')[0] + ',' + startDate.split('-')[1] + ',' + startDate.split('-')[2] + '), DATE(' + endDate.split('-')[0] + ',' + endDate.split('-')[1] + ',' + endDate.split('-')[2] + '), "DAILY")';
+  sheet.getRange("A26").setFormula(companyDataFormula);
+
+  // Fetch S&P 500 data
+  var sp500DataFormula = '=GOOGLEFINANCE("INDEXSP:.INX", "close", DATE(' + startDate.split('-')[0] + ',' + startDate.split('-')[1] + ',' + startDate.split('-')[2] + '), DATE(' + endDate.split('-')[0] + ',' + endDate.split('-')[1] + ',' + endDate.split('-')[2] + '), "DAILY")';
+  sheet.getRange("D26").setFormula(sp500DataFormula);
+
+  // Wait for data to be fetched
+  SpreadsheetApp.flush();
+}
+
+function calculateRisks() {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var companyTicker = sheet.getRange("A1").getValue();
+    var startDate = sheet.getRange("A2").getValue();
+    var endDate = sheet.getRange("A3").getValue();
+
+    // Ensure data is fetched in cells A5 and D5 using GOOGLEFINANCE
+    var companyDataRange = sheet.getRange("A26:B").getValues();
+    var sp500DataRange = sheet.getRange("D26:E").getValues();
+
+    // Filter out headers and empty rows
+    companyDataRange = companyDataRange.filter(row => row[0] && row[1]);
+    sp500DataRange = sp500DataRange.filter(row => row[0] && row[1]);
+
+    if (companyDataRange.length < 2 || sp500DataRange.length < 2) {
+      SpreadsheetApp.getUi().alert('Insufficient data. Ensure you have valid data for the company and the S&P 500.');
+      return;
+    }
+
+    var companyPrices = companyDataRange.slice(1).map(row => row[1]);
+    var sp500Prices = sp500DataRange.slice(1).map(row => row[1]);
+
+    // Calculate daily returns
+    var companyReturns = [];
+    var marketReturns = [];
+    for (var i = 1; i < companyPrices.length; i++) {
+      var companyReturn = (companyPrices[i] - companyPrices[i - 1]) / companyPrices[i - 1];
+      var marketReturn = (sp500Prices[i] - sp500Prices[i - 1]) / sp500Prices[i - 1];
+      companyReturns.push(companyReturn);
+      marketReturns.push(marketReturn);
+    }
+
+    if (companyReturns.length < 2 || marketReturns.length < 2) {
+      SpreadsheetApp.getUi().alert('Insufficient returns data. Ensure you have at least two valid returns.');
+      return;
+    }
+
+    // Perform regression analysis
+    var n = companyReturns.length;
+    var sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+    for (var i = 0; i < n; i++) {
+      sumX += marketReturns[i];
+      sumY += companyReturns[i];
+      sumXY += marketReturns[i] * companyReturns[i];
+      sumXX += marketReturns[i] * marketReturns[i];
+    }
+
+    var beta = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    var alpha = (sumY - beta * sumX) / n;
+
+    // Calculate residuals and unsystematic risk
+    var residuals = [];
+    for (var i = 0; i < n; i++) {
+      var predictedReturn = alpha + beta * marketReturns[i];
+      var residual = companyReturns[i] - predictedReturn;
+      residuals.push(residual);
+    }
+
+    var residualSum = 0;
+    for (var i = 0; i < residuals.length; i++) {
+      residualSum += residuals[i] * residuals[i];
+    }
+
+    var unsystematicRisk = Math.sqrt(residualSum / (n - 2));
+
+    // Output the results to the sheet
+    sheet.getRange("H6").setValue("Systematic Risk (Beta):");
+    sheet.getRange("I6").setValue(beta.toFixed(6));
+    sheet.getRange("H7").setValue("Unsystematic Risk (Residual Standard Deviation):");
+    sheet.getRange("I7").setValue(unsystematicRisk.toFixed(6));
+
+    Logger.log("Unsystematic Risk (Residual Standard Deviation): " + unsystematicRisk.toFixed(6));
+    Logger.log("Systematic Risk (Beta): " + beta.toFixed(6));
+    SpreadsheetApp.getUi().alert("Systematic Risk (Beta): " + beta.toFixed(6) + "\nUnsystematic Risk (Residual Standard Deviation): " + unsystematicRisk.toFixed(6));
+  } catch (e) {
+    Logger.log('Error: ' + e.toString());
+    SpreadsheetApp.getUi().alert('Error: ' + e.toString());
+  }
+}
